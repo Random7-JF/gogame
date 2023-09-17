@@ -7,7 +7,7 @@ import (
 
 func main() {
 	// Define the command you want to run and its arguments
-	cmd := exec.Command("ls", "-l")
+	cmd := exec.Command("cd /opt/minecraft-servers/VaultHunters && tmux new", "-s vaulthunters ./run.sh")
 
 	// Set up pipes for the command's standard input, output, and error
 	cmd.Stdin = nil
