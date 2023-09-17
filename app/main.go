@@ -20,7 +20,7 @@ func serve() error {
 		return err
 	}
 	defer log.Close()
-	cmd := exec.Command("bash", " tmux new -s vaulthunters sh /opt/minecraft-servers/VaultHunters/run.sh")
+	cmd := exec.Command("bash", " tmux new -s vaulthunters ./serve.sh")
 	cmd.Stdout = log
 	cmd.Stderr = log
 	return cmd.Run()

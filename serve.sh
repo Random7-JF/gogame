@@ -1,1 +1,3 @@
-bash tmux new -s vaulthunters sh /opt/minecraft-servers/VaultHunters/run.sh
+#!/bin/bash
+cd /opt/minecraft-servers/VaultHunters 
+tmux new -s vaulthunters ./run.sh
