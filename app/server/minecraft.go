@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"io"
+	"log"
 	"os/exec"
 )
 
@@ -25,10 +26,8 @@ func Init(name string, path string, jar string, javaBin string) *MinecraftServer
 	server.Path = path
 	server.Jar = jar
 	server.JavaBin = javaBin
-	// Start the Minecraft server
 	server.Instance = exec.Command(javaBin, "-Xmx1024M", "-Xms1024M", "-jar", (path + jar), "nogui")
 	server.Instance.Dir = path
-	// Create pipes for stdin and stdout
 	server.StdIn, _ = server.Instance.StdinPipe()
 	server.StdOut, _ = server.Instance.StdoutPipe()
 
@@ -36,50 +35,46 @@ func Init(name string, path string, jar string, javaBin string) *MinecraftServer
 }
 
 func (m *MinecraftServer) Start() {
-	// Start the server
 	err := m.Instance.Start()
 	if err != nil {
-		fmt.Println("Error starting server:", err)
+		log.Println("Instance Start - Error starting server: ", err)
 		return
 	}
-
-	go m.readFromStdOut()
-	go m.writeToStdIn()
-
+	go m.ReadFromStdOut()
+	go m.WriteToStdIn()
 }
 
 func (m *MinecraftServer) Stop() {
-	m.StdIn.Close()
-	m.Instance.Wait()
+	err := m.StdIn.Close()
+	if err != nil {
+		log.Println("StdIn Close - Error closing: ", err)
+		return
+	}
+	err = m.Instance.Wait()
+	if err != nil {
+		log.Println("Instance Wait - Error closing: ", err)
+		return
+	}
 }
 
-func (m *MinecraftServer) StartIO() {
-	go m.writeToStdIn()
-	go m.readFromStdOut()
-}
-
-func (m *MinecraftServer) StopIO() {
-	m.StdIn.Close()
-
-}
-
-// Goroutine for writing to stdin
-func (m *MinecraftServer) writeToStdIn() {
+// for writing to stdin CLI -> Minecraft
+func (m *MinecraftServer) WriteToStdIn() {
 	for {
 		select {
+		//input is value of what in channel.
 		case input := <-m.FromStdIn:
+			//write input with new line.
 			io.WriteString(m.StdIn, input+"\n")
 		}
 	}
 }
 
-// Goroutine for reading from stdout
-func (m *MinecraftServer) readFromStdOut() {
+// for reading from stdout Minecraft -> CLI
+func (m *MinecraftServer) ReadFromStdOut() {
 	scanner := bufio.NewScanner(m.StdOut)
 	for scanner.Scan() {
 		text := scanner.Text()
-		fmt.Printf("Server %d output: %s\n", m.Name, text)
-
+		fmt.Printf("Server %s output: %s\n", m.Name, text)
 		m.FromStdOut <- text
 	}
 }

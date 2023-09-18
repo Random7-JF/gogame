@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"fmt"
 	"log"
 	"os"
 	"os/exec"
@@ -11,7 +12,6 @@ import (
 )
 
 func main() {
-	var current *server.MinecraftServer
 
 	javaBin, err := exec.LookPath("java")
 	if err != nil {
@@ -20,35 +20,39 @@ func main() {
 	}
 
 	server1 := server.Init("Server1", "/home/random/minecraft/server1/", "server.jar", javaBin)
-	server1.Start()
-
 	server2 := server.Init("Server2", "/home/random/minecraft/server2/", "server.jar", javaBin)
-	server2.Start()
+	currentInstance := server1
 
-	current = server1
+	server1.Start()
+	server2.Start()
 
 	var wg sync.WaitGroup
 	wg.Add(1)
 
+	for {
+		test := <-server1.FromStdOut
+		fmt.Println(test)
+	}
+
+	scanner := bufio.NewScanner(os.Stdin)
 	go func() {
-		scanner := bufio.NewScanner(os.Stdin)
 		for scanner.Scan() {
 			text := scanner.Text()
+			fmt.Println("Select server instance or Q to quit")
 			switch text {
 			case "1":
-				if current != server1 {
-					current = server1
+				if currentInstance != server1 {
+					currentInstance = server1
 				}
 			case "2":
-				if current != server2 {
-					current = server2
+				if currentInstance != server2 {
+					currentInstance = server2
 				}
 			case "q":
-				current.Stop()
 				wg.Done()
 				return
 			default:
-				current.FromStdIn <- text
+				currentInstance.FromStdIn <- text
 			}
 		}
 	}()
