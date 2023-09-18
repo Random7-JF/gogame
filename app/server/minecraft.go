@@ -4,88 +4,82 @@ import (
 	"bufio"
 	"fmt"
 	"io"
-	"os"
 	"os/exec"
 )
 
-type MinecraftInstance struct {
-	Path    string
-	Jar     string
-	Name    string
-	JavaBin string
-	StdIn   io.WriteCloser
-	StdOut  io.ReadCloser
-	Input   chan string
-	Output  chan string
+type MinecraftServer struct {
+	Path       string
+	Jar        string
+	Name       string
+	JavaBin    string
+	Instance   *exec.Cmd
+	StdIn      io.WriteCloser
+	StdOut     io.ReadCloser
+	FromStdIn  chan string
+	FromStdOut chan string
 }
 
-func (m *MinecraftInstance) StartServer() error {
+func Init(name string, path string, jar string, javaBin string) *MinecraftServer {
+	var server MinecraftServer
+	server.Name = name
+	server.Path = path
+	server.Jar = jar
+	server.JavaBin = javaBin
 	// Start the Minecraft server
-	cmd := exec.Command(m.JavaBin, "-Xmx1024M", "-Xms1024M", "-jar", (m.Path + m.Jar), "nogui")
-	cmd.Dir = m.Path
+	server.Instance = exec.Command(javaBin, "-Xmx1024M", "-Xms1024M", "-jar", (path + jar), "nogui")
+	server.Instance.Dir = path
 	// Create pipes for stdin and stdout
-	m.StdIn, _ = cmd.StdinPipe()
-	m.StdOut, _ = cmd.StdoutPipe()
+	server.StdIn, _ = server.Instance.StdinPipe()
+	server.StdOut, _ = server.Instance.StdoutPipe()
 
+	return &server
+}
+
+func (m *MinecraftServer) Start() {
 	// Start the server
-	err := cmd.Start()
+	err := m.Instance.Start()
 	if err != nil {
 		fmt.Println("Error starting server:", err)
-		return err
+		return
 	}
 
-	// Create channels for communication between goroutines
-	m.Input = make(chan string)
-	m.Output = make(chan string)
+	go m.readFromStdOut()
+	go m.writeToStdIn()
 
-	go m.readFromStdIn()
+}
+
+func (m *MinecraftServer) Stop() {
+	m.StdIn.Close()
+	m.Instance.Wait()
+}
+
+func (m *MinecraftServer) StartIO() {
 	go m.writeToStdIn()
 	go m.readFromStdOut()
-	go m.writeToStdOut()
+}
 
-	// Wait for the server to finish (you can remove this if you want to keep the server running)
-	err = cmd.Wait()
-	if err != nil {
-		fmt.Println(m.Name+"Error waiting for server:", err)
-		return err
-	}
-	return nil
+func (m *MinecraftServer) StopIO() {
+	m.StdIn.Close()
+
 }
 
 // Goroutine for writing to stdin
-func (m *MinecraftInstance) writeToStdIn() {
+func (m *MinecraftServer) writeToStdIn() {
 	for {
 		select {
-		case input := <-m.Input:
+		case input := <-m.FromStdIn:
 			io.WriteString(m.StdIn, input+"\n")
 		}
 	}
 }
 
-// Goroutine for reading from stdin
-func (m *MinecraftInstance) readFromStdIn() {
-	scanner := bufio.NewScanner(os.Stdin)
-	for scanner.Scan() {
-		text := scanner.Text()
-		m.Input <- text
-	}
-}
-
 // Goroutine for reading from stdout
-func (m *MinecraftInstance) readFromStdOut() {
+func (m *MinecraftServer) readFromStdOut() {
 	scanner := bufio.NewScanner(m.StdOut)
 	for scanner.Scan() {
 		text := scanner.Text()
-		m.Output <- text
-	}
-}
+		fmt.Printf("Server %d output: %s\n", m.Name, text)
 
-// Goroutine for writing to stdout (or do any processing on the output)
-func (m *MinecraftInstance) writeToStdOut() {
-	for {
-		select {
-		case output := <-m.Output:
-			fmt.Println(m.Name+"-Output:", output)
-		}
+		m.FromStdOut <- text
 	}
 }
