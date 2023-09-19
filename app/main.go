@@ -1,57 +1,67 @@
 package main
 
 import (
-	"bufio"
+	"fmt"
 	"log"
 	"os"
 	"os/exec"
-	"sync"
-
-	"github.com/Random7-JF/gogame/app/server"
 )
 
-func main() {
-	var current *server.MinecraftServer
-
+func startServer(serverPath string, serverName string, input chan string) {
 	javaBin, err := exec.LookPath("java")
 	if err != nil {
-		log.Println("Java not found in Path")
-		panic(err)
+		log.Fatal(err)
 	}
 
-	server1 := server.Init("Server1", "/home/random/minecraft/server1/", "server.jar", javaBin)
-	server1.Start()
+	cmd := exec.Command(javaBin, "-Xmx1024M", "-Xms1024M", "-jar", serverPath, "nogui")
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	cmd.Dir = serverName
 
-	server2 := server.Init("Server2", "/home/random/minecraft/server2/", "server.jar", javaBin)
-	server2.Start()
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		log.Fatal(err)
+	}
 
-	current = server1
-
-	var wg sync.WaitGroup
-	wg.Add(1)
+	//	scanner := bufio.NewScanner(os.Stdin)
 
 	go func() {
-		scanner := bufio.NewScanner(os.Stdin)
-		for scanner.Scan() {
-			text := scanner.Text()
-			switch text {
-			case "1":
-				if current != server1 {
-					current = server1
-				}
-			case "2":
-				if current != server2 {
-					current = server2
-				}
-			case "q":
-				current.Stop()
-				wg.Done()
-				return
-			default:
-				current.FromStdIn <- text
+		defer stdin.Close()
+		for {
+			select {
+			case text := <-input:
+				fmt.Fprintln(stdin, text)
 			}
 		}
 	}()
 
-	wg.Wait()
+	err = cmd.Run()
+	if err != nil {
+		log.Fatal(err)
+	}
+}
+
+func main() {
+	server1Input := make(chan string)
+	server2Input := make(chan string)
+
+	go startServer("/home/random/minecraft/server1/server.jar", "/home/random/minecraft/server1", server1Input)
+	go startServer("/home/random/minecraft/server2/server.jar", "/home/random/minecraft/server2", server2Input)
+
+	for {
+		var serverName string
+		var command string
+
+		fmt.Print("Enter server name (server1/server2) and command: ")
+		fmt.Scan(&serverName, &command)
+
+		switch serverName {
+		case "server1":
+			server1Input <- command
+		case "server2":
+			server2Input <- command
+		default:
+			fmt.Println("Invalid server name")
+		}
+	}
 }
